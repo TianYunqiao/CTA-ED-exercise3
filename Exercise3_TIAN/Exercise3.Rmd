@@ -1,0 +1,245 @@
+---
+title: "Exercise3"
+output: html_document
+date: "2024-02-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+##Question1
+library(readr) 
+library(quanteda) 
+library(quanteda.textstats)
+library(stringdist) 
+library(dplyr) 
+library(tibble) 
+library(ggplot2) 
+```
+
+```{r}
+##load the data of tweets
+tweets  <- readRDS(gzcon(url("https://github.com/cjbarrie/CTA-ED/blob/main/data/comparison-complexity/cabinet_tweets.rds?raw=true")))
+```
+
+```{r}
+head(tweets)
+```
+
+```{r}
+## Chech 24 MPs whose tweets we’re examining.
+unique(tweets$username)
+```
+
+```{r}
+##Check the size of username
+length(unique(tweets$username))
+```
+
+```{r}
+## reformat the data into a quanteda “corpus” object, and specifying tweet as text field
+tweets_corpus <- corpus(tweets, text_field = "tweet")
+```
+
+```{r}
+##add in username document-level information
+docvars(tweets_corpus, "username") <- tweets$username
+```
+
+```{r}
+tweets_corpus
+```
+```{r}
+ ##reformat the data into a document feature matrix
+dfmat <- dfm(tokens(tweets_corpus),
+             remove_punct = TRUE, 
+             remove = stopwords("english"))
+```
+
+```{r}
+dfmat
+```
+
+```{r}
+##use method "euclidean" to measure distance for MP tweets
+corrmat <- dfmat %>%
+  dfm_group(groups = username) %>%
+  textstat_dist(margin = "documents", method = "euclidean")##Specifying the method
+
+corrmat[1:5,1:5]
+```
+
+```{r}
+##Compare ditance MP tweets with MPs tweets
+cos_dist <- dfmat %>%
+  dfm_group(groups = username) %>%
+  textstat_dist(margin = "documents", method = "euclidean") ##Specifying the method
+```
+
+```{r}
+#convert to a matrix
+cosmat <- as.matrix(cos_dist)
+```
+
+```{r}
+#generate data frame keeping only the row for Theresa May
+cosmatdf <- as.data.frame(cosmat[23, c(1:22, 24)])
+```
+
+```{r}
+##rename the euclidean distance column with a new name and convert row names to a column variable so that I have cells containing information on the MP to which the distance measure refers
+colnames(cosmatdf) <- "corr_may" ##rename column
+cosmatdf <- tibble::rownames_to_column(cosmatdf, "username") ###create column variable from rownames
+```
+
+```{r}
+## plot the results of distance comparing between MPs tweets and PM tweets
+ggplot(cosmatdf) +
+  geom_point(aes(x=reorder(username, -corr_may), y= corr_may)) + 
+  coord_flip() +
+  xlab("MP username") +
+  ylab("Euclidean distance score") + 
+  theme_minimal()
+```
+```{r}
+##Question2
+##load the data of EU Speeches
+speeches  <- readRDS(gzcon(url("https://github.com/cjbarrie/CTA-ED/blob/main/data/comparison-complexity/speeches.rds?raw=true")))
+```
+
+```{r}
+head(speeches)
+```
+
+```{r}
+#use SMOG (Simple Measure of Gobbledygook) measure complexity of EU Speeches
+speeches$flesch.kincaid <- textstat_readability(speeches$text, measure = "SMOG")
+```
+
+```{r}
+# returned as quanteda data.frame with document-level information;
+speeches$flesch.kincaid <- speeches$flesch.kincaid$SMOG
+```
+
+```{r}
+#get mean and standard deviation of SMOG, and N of speeches for each speaker
+sum_corpus <- speeches %>%
+  group_by(speaker) %>%
+  summarise(mean = mean(flesch.kincaid, na.rm=TRUE),
+                   SD=sd(flesch.kincaid, na.rm=TRUE),
+                   N=length(speaker))
+
+# calculate standard errors and confidence intervals
+sum_corpus$se <- sum_corpus$SD / sqrt(sum_corpus$N)
+sum_corpus$min <- sum_corpus$mean - 1.96*sum_corpus$se
+sum_corpus$max <- sum_corpus$mean + 1.96*sum_corpus$se
+```
+
+```{r}
+sum_corpus
+```
+
+```{r}
+##plot the results
+ggplot(sum_corpus, aes(x=speaker, y=mean)) +
+  geom_bar(stat="identity") + 
+  geom_errorbar(ymin=sum_corpus$min,ymax=sum_corpus$max, width=.2) +
+  coord_flip() + ##(I am confused what this lin mean???)
+  xlab("") +
+  ylab("Mean Complexity") + 
+  theme_minimal() + 
+  ylim(c(0,20))
+```
+
+```{r}
+##Method ARI(Automated Readability Index (Senter and Smith 1967))
+speeches$flesch.kincaid <- textstat_readability(speeches$text, measure = "ARI")
+```
+
+```{r}
+# returned as quanteda data.frame with document-level information;
+speeches$flesch.kincaid <- speeches$flesch.kincaid$ARI
+```
+
+```{r}
+#get mean and standard deviation of ARI, and N of speeches for each speaker
+sum_corpus <- speeches %>%
+  group_by(speaker) %>%
+  summarise(mean = mean(flesch.kincaid, na.rm=TRUE),
+                   SD=sd(flesch.kincaid, na.rm=TRUE),
+                   N=length(speaker))
+
+# calculate standard errors and confidence intervals
+sum_corpus$se <- sum_corpus$SD / sqrt(sum_corpus$N)
+sum_corpus$min <- sum_corpus$mean - 1.96*sum_corpus$se
+sum_corpus$max <- sum_corpus$mean + 1.96*sum_corpus$se
+```
+
+```{r}
+##plot the results
+ggplot(sum_corpus, aes(x=speaker, y=mean)) +
+  geom_bar(stat="identity") + 
+  geom_errorbar(ymin=sum_corpus$min,ymax=sum_corpus$max, width=.2) +
+  coord_flip() + ##(I am confused what this lin mean???)
+  xlab("") +
+  ylab("Mean Complexity") + 
+  theme_minimal() + 
+  ylim(c(0,20))
+```
+```{r}
+##The Third method: "FOG"（Gunning's Fog Index (Gunning 1952)）
+speeches$flesch.kincaid <- textstat_readability(speeches$text, measure = "FOG")
+```
+
+```{r}
+# returned as quanteda data.frame with document-level information;
+speeches$flesch.kincaid <- speeches$flesch.kincaid$FOG
+```
+
+```{r}
+#get mean and standard deviation of FOG, and N of speeches for each speaker
+sum_corpus <- speeches %>%
+  group_by(speaker) %>%
+  summarise(mean = mean(flesch.kincaid, na.rm=TRUE),
+                   SD=sd(flesch.kincaid, na.rm=TRUE),
+                   N=length(speaker))
+
+# calculate standard errors and confidence intervals
+sum_corpus$se <- sum_corpus$SD / sqrt(sum_corpus$N)
+sum_corpus$min <- sum_corpus$mean - 1.96*sum_corpus$se
+sum_corpus$max <- sum_corpus$mean + 1.96*sum_corpus$se
+```
+
+```{r}
+##plot the results
+ggplot(sum_corpus, aes(x=speaker, y=mean)) +
+  geom_bar(stat="identity") + 
+  geom_errorbar(ymin=sum_corpus$min,ymax=sum_corpus$max, width=.2) +
+  coord_flip() + ##(I am confused what this lin mean???)
+  xlab("") +
+  ylab("Mean Complexity") + 
+  theme_minimal() + 
+  ylim(c(0,20))
+```
